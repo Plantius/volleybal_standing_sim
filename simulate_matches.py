@@ -21,14 +21,21 @@ def calculate_win_probabilities(past_results):
             score1, score2 = [int(x) for x in row['Uitslag'].split('-')]
 
         if team1 not in team_stats:
-            team_stats[team1] = {'wins': 0, 'games': 0, 'points': 0, '4-0': 0, '3-1': 0, '3-2': 0, '0-4': 0, '1-3': 0, '2-3': 0}
+            team_stats[team1] = {'wins': 0, 'games': 0, 'points': 0, 'results': {}, '4-0': 0, '3-1': 0, '3-2': 0, '0-4': 0, '1-3': 0, '2-3': 0}
         if team2 not in team_stats:
-            team_stats[team2] = {'wins': 0, 'games': 0, 'points': 0, '4-0': 0, '3-1': 0, '3-2': 0, '0-4': 0, '1-3': 0, '2-3': 0}
+            team_stats[team2] = {'wins': 0, 'games': 0, 'points': 0, 'results': {}, '4-0': 0, '3-1': 0, '3-2': 0, '0-4': 0, '1-3': 0, '2-3': 0}
         
+        if team2 not in team_stats[team1]['results']:
+            team_stats[team1]['results'][team2] = 0
+        if team1 not in team_stats[team2]['results']:
+            team_stats[team2]['results'][team1] = 0
+
         team_stats[team1]['games'] += 1
         team_stats[team2]['games'] += 1
         team_stats[team1][f'{score1}-{score2}'] += 1
         team_stats[team2][f'{score2}-{score1}'] += 1
+        team_stats[team1]['results'][team2] += 5 - score2
+        team_stats[team2]['results'][team1] += 5 - score1
         
         if score1 > score2:
             team_stats[team1]['wins'] += 1
@@ -38,10 +45,10 @@ def calculate_win_probabilities(past_results):
             team_stats[team2]['wins'] += 1
             team_stats[team2]['points'] += 5 - score1
             team_stats[team1]['points'] += score1
-        
-    print(team_stats)
     probabilities = {
-        team: stats['wins'] / stats['games']
+        team: {'results': stats['results'], 
+               '4-0':stats['4-0']/stats['games'], '3-1':stats['3-1']/stats['games'], '3-2':stats['3-2']/stats['games'], 
+               '0-4':stats['0-4']/stats['games'], '1-3':stats['1-3']/stats['games'], '2-3':stats['2-3']/stats['games']}
         for team, stats in team_stats.items()
     }
     
@@ -50,21 +57,44 @@ def calculate_win_probabilities(past_results):
 # Step 3: Predict the most likely outcomes for each match
 def predict_match_outcomes(remaining_matches, probabilities):
     outcomes = []
-    
+    teams = []
+    chances = []
     for _, row in remaining_matches.iterrows():
-        team1, team2 = row['Team1'], row['Team2']
-        prob1 = probabilities.get(team1, 0.5)
-        prob2 = probabilities.get(team2, 0.5)
+        team1, team2 = row['Team thuis'], row['Team uit']
+        probs1: dict = probabilities.get(team1, {}).get('results', {})
+        probs2: dict = probabilities.get(team2, {}).get('results', {})
         
+        old_res1 = probs1.get(team2, 0)
+        old_res2 = probs2.get(team1, 0)
+        winning_chance = (old_res1 / old_res2 if old_res2 != 0 else 0) - (old_res2 / old_res1 if old_res1 != 0 else 0)
+        chances.append(winning_chance)
+        teams.append((team1, team2))
+
         # Normalize probabilities
-        prob1, prob2 = prob1 / (prob1 + prob2), prob2 / (prob1 + prob2)
-        
+        # for item1, item2 in zip(probs1.items(), probs2.items()):
+            # key, item1 = item1
+            # key, item2 = item2
+            # probs1[key] = item1 / (item1 + item2) if item1 + item2 != 0 else 0
+            # probs2[key] = item2 / (item1 + item2) if item1 + item2 != 0 else 0
+        continue
+        outcome = 0 
+        prev = 0
+        for item1, item2 in zip(probs1.items(), probs2.items()):
+            key, prob1 = item1
+            key, prob2 = item2
+            if abs(prob1 - prob2) > prev:
+                outcome = key
+                prev = abs(prob1 - prob2)
+            print(key, abs(prob1 - prob2))
+        print(f'{team1} vs. {team2}: {outcome}, {prev}')
+    chances = np.array(chances)
+    chances = chances/abs(chances).max()*.5 + .5
+    print(list(zip(teams, chances)))
         # Likely outcomes based on probabilities
-        if prob1 > prob2:
-            outcomes.append((team1, team2, '4-0', 5, 0))
-        else:
-            outcomes.append((team2, team1, '4-0', 5, 0))
-    
+        # if prob1 > prob2:
+        #     outcomes.append((team1, team2, '4-0', 5, 0))
+        # else:
+        #     outcomes.append((team2, team1, '4-0', 5, 0))
     return outcomes
 
 # Step 4: Simulate the final standings
@@ -89,8 +119,9 @@ def main():
 
     probabilities = calculate_win_probabilities(past_results)
     print("Probabilities:", probabilities)
-    # predicted_outcomes = predict_match_outcomes(remaining_matches, probabilities)
-
+    print()
+    predicted_outcomes = predict_match_outcomes(remaining_matches, probabilities)
+    # print(predicted_outcomes)
     # final_standings = simulate_standings(standings, predicted_outcomes)
     # print("Final Standings:", final_standings)
 
