@@ -124,11 +124,10 @@ def main():
     standings, past_results, remaining_matches = read_csv_files(
         standings_file, past_results_file, remaining_matches_file
     )
-
     probabilities = calculate_win_probabilities(past_results)
     predicted_outcomes = predict_match_outcomes(remaining_matches, probabilities)
     final_standings = simulate_standings(standings, predicted_outcomes)
-    final_standings[["Punten"]].to_csv("predicted_final_standings.csv")
+    final_standings[["Punten"]].to_csv(f"predicted_final_standings_{remaining_matches.shape[0]}_matches_remaining.csv")
 
 # Run the program
 if __name__ == "__main__":
