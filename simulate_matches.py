@@ -6,13 +6,14 @@ def prob_mapping(prob):
     thresholds = [
         (0.75, '4-0', 4, 0),
         (0.6, '3-1', 3, 1),
-        (0.5, '3-2', 3, 2),
-        (0.4, '2-3', 2, 3),
-        (0.25, '1-3', 1, 3),
+        (0.55, '3-2', 3, 2),
+        (0.45, '2-3', 2, 3),
+        (0.4, '1-3', 2, 3),
+        (0.25, '0-4', 0, 4),
         (0.0, '0-4', 0, 4),
     ]
     for threshold, result, points1, points2 in thresholds:
-        if prob > threshold:
+        if prob >= threshold:
             return result, points1, points2
     return None, 0, 0
 
@@ -33,16 +34,20 @@ def calculate_win_probabilities(past_results):
             score1, score2 = 3, 2
         else:
             score1, score2 = map(int, row['Uitslag'].split('-'))
-
+        
         if team1 not in team_stats:
-            team_stats[team1] = {'wins': 0, 'games': 0, 'points': 0, 'results': {}}
+            team_stats[team1] = {'wins': 0, 'games': 0, 'points': 0, 'results': {}, 'score_dist': {}}
         if team2 not in team_stats:
-            team_stats[team2] = {'wins': 0, 'games': 0, 'points': 0, 'results': {}}
+            team_stats[team2] = {'wins': 0, 'games': 0, 'points': 0, 'results': {}, 'score_dist': {}}
         
         team_stats[team1]['games'] += 1
         team_stats[team2]['games'] += 1
         team_stats[team1]['results'][team2] = team_stats[team1]['results'].get(team2, 0) + (5 - score2)
         team_stats[team2]['results'][team1] = team_stats[team2]['results'].get(team1, 0) + (5 - score1)
+        
+        score_str = f"{score1}-{score2}"
+        team_stats[team1]['score_dist'][score_str] = team_stats[team1]['score_dist'].get(score_str, 0) + 1
+        team_stats[team2]['score_dist'][score_str] = team_stats[team2]['score_dist'].get(score_str, 0) + 1
         
         if score1 > score2:
             team_stats[team1]['wins'] += 1
@@ -54,10 +59,11 @@ def calculate_win_probabilities(past_results):
             team_stats[team1]['points'] += score1
     
     probabilities = {
-        team: {'results': stats['results'], 'points': stats['points']} 
+        team: {'results': stats['results'], 'points': stats['points'], 'score_dist': stats['score_dist']}
         for team, stats in team_stats.items()
     }
     return probabilities
+
 
 # Step 3: Predict the most likely outcomes for each match
 def predict_match_outcomes(remaining_matches, probabilities):
@@ -71,25 +77,25 @@ def predict_match_outcomes(remaining_matches, probabilities):
 
         old_res1 = probs1.get(team2, 0)
         old_res2 = probs2.get(team1, 0)
-
-        if old_res1 == 0 and old_res2 == 0:
+        old_total = old_res1 + old_res2
+        if old_total == 0:
             winning_chance = 0
         else:
-            winning_chance = ((old_res1 - old_res2) / max(old_res1 + old_res2, 1))*.5 + .5
-            
+            winning_chance = ((old_res1 - old_res2) / old_total)*.5 + .5
+
         outcome, points1, points2 = prob_mapping(winning_chance)
         if outcome is None:
             cur_points1 = probabilities.get(team1, {}).get('points', 0)
             cur_points2 = probabilities.get(team2, {}).get('points', 0)
-
-            if cur_points1 + cur_points2 == 0:
+            cur_total = cur_points1 + cur_points2
+            if cur_total == 0:
                 chance = 0.5
             else:
-                chance = cur_points1 / (cur_points1 + cur_points2)
+                chance = ((cur_points1 - cur_points2)/cur_total)*.5 + .5
                 
-            print(chance)
+            # print(chance)
 
-            outcome, points1, points2 = prob_mapping(chance * 0.5 + 0.5)
+            outcome, points1, points2 = prob_mapping(chance)
 
         outcomes.append((team1, team2, outcome, points1, points2))
     
