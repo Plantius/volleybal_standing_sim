@@ -2,6 +2,25 @@ import pandas as pd
 from itertools import product
 import numpy as np
 
+def prob_mapping(prob):
+    if (prob == .5 or prob is None):
+        return None, 0, 0
+    
+    if (prob > .5 and prob < .6):
+        return '3-2', 3, 2
+    if (prob < .5 and prob > .4):
+        return '2-3', 2, 3
+    
+    if (prob > .6 and prob < .8):
+        return '3-1', 3, 1
+    if (prob < .4 and prob > .2):
+        return '1-3', 1, 3
+    
+    if (prob > .8):
+        return '4-0', 4, 0
+    if (prob < .2):
+        return '0-4', 0, 4
+
 # Step 1: Parse CSV files
 def read_csv_files(standings_file, past_results_file, remaining_matches_file):
     standings = pd.read_csv(standings_file)
@@ -46,7 +65,7 @@ def calculate_win_probabilities(past_results):
             team_stats[team2]['points'] += 5 - score1
             team_stats[team1]['points'] += score1
     probabilities = {
-        team: {'results': stats['results'], 
+        team: {'results': stats['results'], 'points': stats['points'],
                '4-0':stats['4-0']/stats['games'], '3-1':stats['3-1']/stats['games'], '3-2':stats['3-2']/stats['games'], 
                '0-4':stats['0-4']/stats['games'], '1-3':stats['1-3']/stats['games'], '2-3':stats['2-3']/stats['games']}
         for team, stats in team_stats.items()
@@ -70,31 +89,20 @@ def predict_match_outcomes(remaining_matches, probabilities):
         chances.append(winning_chance)
         teams.append((team1, team2))
 
-        # Normalize probabilities
-        # for item1, item2 in zip(probs1.items(), probs2.items()):
-            # key, item1 = item1
-            # key, item2 = item2
-            # probs1[key] = item1 / (item1 + item2) if item1 + item2 != 0 else 0
-            # probs2[key] = item2 / (item1 + item2) if item1 + item2 != 0 else 0
-        continue
-        outcome = 0 
-        prev = 0
-        for item1, item2 in zip(probs1.items(), probs2.items()):
-            key, prob1 = item1
-            key, prob2 = item2
-            if abs(prob1 - prob2) > prev:
-                outcome = key
-                prev = abs(prob1 - prob2)
-            print(key, abs(prob1 - prob2))
-        print(f'{team1} vs. {team2}: {outcome}, {prev}')
     chances = np.array(chances)
     chances = chances/abs(chances).max()*.5 + .5
-    print(list(zip(teams, chances)))
-        # Likely outcomes based on probabilities
-        # if prob1 > prob2:
-        #     outcomes.append((team1, team2, '4-0', 5, 0))
-        # else:
-        #     outcomes.append((team2, team1, '4-0', 5, 0))
+    for teams, chance in zip(teams, chances):
+        team1, team2 = teams
+        outcome, points1, points2 = prob_mapping(chance)
+        if (outcome is None):
+            cur_points1 = probabilities.get(team1, {}).get('points', 0)
+            cur_points2 = probabilities.get(team2, {}).get('points', 0)
+            chance = cur_points1 / (cur_points1 + cur_points2 if cur_points1 + cur_points2 != 0 else 0) - cur_points2 / (cur_points1 + cur_points2 if cur_points1 + cur_points2 != 0 else 0)
+            chance = chance*.5 + .5
+            outcome, points1, points2 = prob_mapping(chance)
+        
+        outcomes.append((team1, team2, outcome, points1, points2))
+      
     return outcomes
 
 # Step 4: Simulate the final standings
@@ -118,10 +126,10 @@ def main():
     )
 
     probabilities = calculate_win_probabilities(past_results)
-    print("Probabilities:", probabilities)
-    print()
+    # print("Probabilities:", probabilities)
+    # print()
     predicted_outcomes = predict_match_outcomes(remaining_matches, probabilities)
-    # print(predicted_outcomes)
+    print(predicted_outcomes)
     # final_standings = simulate_standings(standings, predicted_outcomes)
     # print("Final Standings:", final_standings)
 
