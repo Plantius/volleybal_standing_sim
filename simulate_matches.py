@@ -1,25 +1,20 @@
 import pandas as pd
-from itertools import product
 import numpy as np
 
+# Match probability to match result
 def prob_mapping(prob):
-    if (prob == .5 or prob is None):
-        return None, 0, 0
-    
-    if (prob > .5 and prob < .6):
-        return '3-2', 3, 2
-    if (prob < .5 and prob > .4):
-        return '2-3', 2, 3
-    
-    if (prob > .6 and prob < .8):
-        return '3-1', 3, 1
-    if (prob < .4 and prob > .2):
-        return '1-3', 1, 3
-    
-    if (prob > .8):
-        return '4-0', 4, 0
-    if (prob < .2):
-        return '0-4', 0, 4
+    thresholds = [
+        (0.75, '4-0', 4, 0),
+        (0.6, '3-1', 3, 1),
+        (0.5, '3-2', 3, 2),
+        (0.4, '2-3', 2, 3),
+        (0.25, '1-3', 1, 3),
+        (0.0, '0-4', 0, 4),
+    ]
+    for threshold, result, points1, points2 in thresholds:
+        if prob > threshold:
+            return result, points1, points2
+    return None, 0, 0
 
 # Step 1: Parse CSV files
 def read_csv_files(standings_file, past_results_file, remaining_matches_file):
@@ -34,27 +29,20 @@ def calculate_win_probabilities(past_results):
     
     for _, row in past_results.iterrows():
         team1, team2 = row['Team thuis'], row['Team uit']
-        if row['Uitslag'] is np.nan:
-            score1, score2 = [3, 2]
+        if pd.isna(row['Uitslag']):
+            score1, score2 = 3, 2
         else:
-            score1, score2 = [int(x) for x in row['Uitslag'].split('-')]
+            score1, score2 = map(int, row['Uitslag'].split('-'))
 
         if team1 not in team_stats:
-            team_stats[team1] = {'wins': 0, 'games': 0, 'points': 0, 'results': {}, '4-0': 0, '3-1': 0, '3-2': 0, '0-4': 0, '1-3': 0, '2-3': 0}
+            team_stats[team1] = {'wins': 0, 'games': 0, 'points': 0, 'results': {}}
         if team2 not in team_stats:
-            team_stats[team2] = {'wins': 0, 'games': 0, 'points': 0, 'results': {}, '4-0': 0, '3-1': 0, '3-2': 0, '0-4': 0, '1-3': 0, '2-3': 0}
+            team_stats[team2] = {'wins': 0, 'games': 0, 'points': 0, 'results': {}}
         
-        if team2 not in team_stats[team1]['results']:
-            team_stats[team1]['results'][team2] = 0
-        if team1 not in team_stats[team2]['results']:
-            team_stats[team2]['results'][team1] = 0
-
         team_stats[team1]['games'] += 1
         team_stats[team2]['games'] += 1
-        team_stats[team1][f'{score1}-{score2}'] += 1
-        team_stats[team2][f'{score2}-{score1}'] += 1
-        team_stats[team1]['results'][team2] += 5 - score2
-        team_stats[team2]['results'][team1] += 5 - score1
+        team_stats[team1]['results'][team2] = team_stats[team1]['results'].get(team2, 0) + (5 - score2)
+        team_stats[team2]['results'][team1] = team_stats[team2]['results'].get(team1, 0) + (5 - score1)
         
         if score1 > score2:
             team_stats[team1]['wins'] += 1
@@ -64,55 +52,60 @@ def calculate_win_probabilities(past_results):
             team_stats[team2]['wins'] += 1
             team_stats[team2]['points'] += 5 - score1
             team_stats[team1]['points'] += score1
+    
     probabilities = {
-        team: {'results': stats['results'], 'points': stats['points'],
-               '4-0':stats['4-0']/stats['games'], '3-1':stats['3-1']/stats['games'], '3-2':stats['3-2']/stats['games'], 
-               '0-4':stats['0-4']/stats['games'], '1-3':stats['1-3']/stats['games'], '2-3':stats['2-3']/stats['games']}
+        team: {'results': stats['results'], 'points': stats['points']} 
         for team, stats in team_stats.items()
     }
-    
     return probabilities
 
 # Step 3: Predict the most likely outcomes for each match
 def predict_match_outcomes(remaining_matches, probabilities):
     outcomes = []
-    teams = []
     chances = []
+
     for _, row in remaining_matches.iterrows():
         team1, team2 = row['Team thuis'], row['Team uit']
-        probs1: dict = probabilities.get(team1, {}).get('results', {})
-        probs2: dict = probabilities.get(team2, {}).get('results', {})
-        
+        probs1 = probabilities.get(team1, {}).get('results', {})
+        probs2 = probabilities.get(team2, {}).get('results', {})
+
         old_res1 = probs1.get(team2, 0)
         old_res2 = probs2.get(team1, 0)
-        winning_chance = (old_res1 / old_res2 if old_res2 != 0 else 0) - (old_res2 / old_res1 if old_res1 != 0 else 0)
-        chances.append(winning_chance)
-        teams.append((team1, team2))
 
-    chances = np.array(chances)
-    chances = chances/abs(chances).max()*.5 + .5
-    for teams, chance in zip(teams, chances):
-        team1, team2 = teams
-        outcome, points1, points2 = prob_mapping(chance)
-        if (outcome is None):
+        if old_res1 == 0 and old_res2 == 0:
+            winning_chance = 0
+        else:
+            winning_chance = ((old_res1 - old_res2) / max(old_res1 + old_res2, 1))*.5 + .5
+            
+        outcome, points1, points2 = prob_mapping(winning_chance)
+        if outcome is None:
             cur_points1 = probabilities.get(team1, {}).get('points', 0)
             cur_points2 = probabilities.get(team2, {}).get('points', 0)
-            chance = cur_points1 / (cur_points1 + cur_points2 if cur_points1 + cur_points2 != 0 else 0) - cur_points2 / (cur_points1 + cur_points2 if cur_points1 + cur_points2 != 0 else 0)
-            chance = chance*.5 + .5
-            outcome, points1, points2 = prob_mapping(chance)
-        
+
+            if cur_points1 + cur_points2 == 0:
+                chance = 0.5
+            else:
+                chance = cur_points1 / (cur_points1 + cur_points2)
+                
+            print(chance)
+
+            outcome, points1, points2 = prob_mapping(chance * 0.5 + 0.5)
+
         outcomes.append((team1, team2, outcome, points1, points2))
-      
+    
+
     return outcomes
 
 # Step 4: Simulate the final standings
 def simulate_standings(standings, outcomes):
     standings = standings.set_index('Teamnaam')
-    
-    for winner, loser, score, winner_points, loser_points in outcomes:
-        standings.loc[winner, 'Punten'] += winner_points
-        standings.loc[loser, 'Punten'] += loser_points
-    
+
+    for winner, loser, _, winner_points, loser_points in outcomes:
+        if winner in standings.index:
+            standings.at[winner, 'Punten'] += winner_points
+        if loser in standings.index:
+            standings.at[loser, 'Punten'] += loser_points
+
     return standings.sort_values(by='Punten', ascending=False)
 
 # Main execution flow
@@ -127,7 +120,8 @@ def main():
     probabilities = calculate_win_probabilities(past_results)
     predicted_outcomes = predict_match_outcomes(remaining_matches, probabilities)
     final_standings = simulate_standings(standings, predicted_outcomes)
-    final_standings[["Punten"]].to_csv(f"predicted_final_standings_{remaining_matches.shape[0]}_matches_remaining.csv")
+
+    final_standings[['Punten']].to_csv(f"predicted_final_standings_{len(remaining_matches)}_matches_remaining.csv")
 
 # Run the program
 if __name__ == "__main__":
