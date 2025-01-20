@@ -107,13 +107,13 @@ def predict_match_outcomes(remaining_matches, probabilities):
 
 # Step 4: Simulate the final standings
 def simulate_standings(standings, outcomes):
-    standings = standings.set_index('Team')
+    standings = standings.set_index('Teamnaam')
     
     for winner, loser, score, winner_points, loser_points in outcomes:
-        standings.loc[winner, 'Points'] += winner_points
-        standings.loc[loser, 'Points'] += loser_points
+        standings.loc[winner, 'Punten'] += winner_points
+        standings.loc[loser, 'Punten'] += loser_points
     
-    return standings.sort_values(by='Points', ascending=False)
+    return standings.sort_values(by='Punten', ascending=False)
 
 # Main execution flow
 def main():
@@ -126,12 +126,9 @@ def main():
     )
 
     probabilities = calculate_win_probabilities(past_results)
-    # print("Probabilities:", probabilities)
-    # print()
     predicted_outcomes = predict_match_outcomes(remaining_matches, probabilities)
-    print(predicted_outcomes)
-    # final_standings = simulate_standings(standings, predicted_outcomes)
-    # print("Final Standings:", final_standings)
+    final_standings = simulate_standings(standings, predicted_outcomes)
+    print(final_standings[["Punten"]])
 
 # Run the program
 if __name__ == "__main__":
