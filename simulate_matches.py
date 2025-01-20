@@ -128,7 +128,7 @@ def main():
     probabilities = calculate_win_probabilities(past_results)
     predicted_outcomes = predict_match_outcomes(remaining_matches, probabilities)
     final_standings = simulate_standings(standings, predicted_outcomes)
-    print(final_standings[["Punten"]])
+    final_standings[["Punten"]].to_csv("predicted_final_standings.csv")
 
 # Run the program
 if __name__ == "__main__":
